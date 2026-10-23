@@ -748,7 +748,7 @@ class PolicyTest(unittest.TestCase):
         self.assertNotIn("arc", approach["valid_turret_placement_samples"])
         self.assertEqual(
             approach["valid_wall_placement_samples"]["copper-wall"]["rows"][0],
-            [18, 10, 8],
+            [18, 10, 8, None, None],
         )
         self.assertEqual(compact["immediate_evidence_digest"]["defense_totals"]["walls"], 1)
 

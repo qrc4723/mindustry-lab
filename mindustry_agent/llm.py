@@ -120,10 +120,17 @@ Stockpile RTS strategic frame (causal guidance, never a build order):
   not a required defense ratio, named-turret preference, wall count, threat threshold, or build order. Compare the
   opportunity cost of delaying production in the shared construction queue with the protection each structure can
   provide against the actual enemy units, weapons, approach, and target.
-- rts_defense.approach_directions treats each opposing core as a possible attack origin. Turret samples are exact,
-  currently valid anchors whose firing geometry intersects the shown ground or air path; wall samples are exact,
-  currently valid anchors on or near the current ground route. The rows are unranked. Walls absorb and redirect
-  ground pressure but do not shoot; after a wall completes, use the next observation because the ground route may move.
+- rts_defense.approach_directions exposes the possible attack entries. In stockpile RTS the three approach_lane rows
+  are separate north, center, and south routes from the neutral crossings toward your core; compare all three rather
+  than assuming the shortest center route is the only threat. Turret samples are exact, currently valid forward
+  anchors whose firing geometry intersects the shown ground or air path. Each sample reports
+  whether it lies between the core and the approach plus its factual base_gate, lane_screen, or forward_choke zone;
+  strategic_defense_zones marks representative route lines. Use these facts with actual range, enemy composition and
+  the line being protected instead of placing ground defense behind the core merely because a tile is empty. Rear
+  placement remains a legitimate deliberate choice for air interception, fallback protection, or a known flank through
+  ordinary placement options. Wall samples are exact forward anchors on or near the current ground route. The rows are
+  unranked. Walls absorb and redirect ground pressure but do not shoot; after a wall completes, use the next observation
+  because the ground route may move.
 - Item turrets begin without a guaranteed ammunition feed. Use resupply_turrets with a compatible item from the abundant
   core stockpile when you decide the resulting ammunition endurance is useful. In this RTS mode that explicit
   action transfers ammunition directly from the core without belts; it supplies matching owned turrets below the

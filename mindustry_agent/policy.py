@@ -1014,6 +1014,26 @@ def _stockpile_rts_defense_state(
         name = str(building.get("block"))
         existing_counts[name] = existing_counts.get(name, 0) + 1
 
+    def representative_zones(placements: list[Any]) -> list[dict[str, Any]]:
+        """Keep one exact anchor per observed line instead of x-sorted near-duplicates."""
+        selected: list[dict[str, Any]] = []
+        seen_zones: set[str] = set()
+        valid = [placement for placement in placements if isinstance(placement, dict)]
+        for wanted in ("base_gate", "lane_screen", "forward_choke"):
+            match = next((row for row in valid if row.get("defensive_zone") == wanted), None)
+            if match is not None:
+                selected.append(match)
+                seen_zones.add(wanted)
+        for placement in valid:
+            if len(selected) >= 3:
+                break
+            zone = str(placement.get("defensive_zone"))
+            if zone in seen_zones and zone != "None":
+                continue
+            selected.append(placement)
+            seen_zones.add(zone)
+        return selected
+
     raw = state.get("defense_analysis") if isinstance(state.get("defense_analysis"), dict) else {}
     approaches: list[dict[str, Any]] = []
     for direction in raw.get("approach_directions", []):
@@ -1026,14 +1046,22 @@ def _stockpile_rts_defense_state(
                 if str(name) not in defense_names or not isinstance(placements, list):
                     continue
                 turret_tables[str(name)] = {
-                    "columns": ["x", "y", "ground_route_intervals", "air_route_distance_intervals"],
+                    "columns": [
+                        "x", "y", "distance_from_core_tiles", "anchor_steps_from_core",
+                        "defensive_zone", "frontline_relation", "ground_route_intervals",
+                        "air_route_distance_intervals",
+                    ],
                     "rows": [
                         [
                             placement.get("x"), placement.get("y"),
+                            placement.get("distance_from_core_tiles"),
+                            placement.get("anchor_steps_from_core"),
+                            placement.get("defensive_zone"),
+                            placement.get("frontline_relation"),
                             placement.get("ground_route_intervals", []),
                             placement.get("air_route_distance_intervals", []),
                         ]
-                        for placement in placements[:2] if isinstance(placement, dict)
+                        for placement in representative_zones(placements)
                     ],
                 }
         wall_tables: dict[str, Any] = {}
@@ -1043,18 +1071,23 @@ def _stockpile_rts_defense_state(
                 if str(name) not in defense_names or not isinstance(placements, list):
                     continue
                 wall_tables[str(name)] = {
-                    "columns": ["x", "y", "steps_from_core"],
+                    "columns": [
+                        "x", "y", "steps_from_core", "defensive_zone", "frontline_relation",
+                    ],
                     "rows": [
-                        [placement.get("x"), placement.get("y"), placement.get("steps_from_core")]
-                        for placement in placements[:2] if isinstance(placement, dict)
+                        [
+                            placement.get("x"), placement.get("y"), placement.get("steps_from_core"),
+                            placement.get("defensive_zone"), placement.get("frontline_relation"),
+                        ]
+                        for placement in representative_zones(placements)
                     ],
                 }
         approaches.append({
             key: direction.get(key)
             for key in (
-                "direction_id", "spawn", "ground_route_reachable", "ground_route_length_tiles",
+                "direction_id", "approach_lane", "spawn", "ground_route_reachable", "ground_route_length_tiles",
                 "ground_entry_reference", "air_vector_from_core", "straight_line_distance_tiles",
-                "existing_turret_route_engagements", "placement_sample_contract",
+                "existing_turret_route_engagements", "strategic_defense_zones", "placement_sample_contract",
                 "wall_placement_sample_contract",
             )
         } | {

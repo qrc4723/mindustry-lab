@@ -42,6 +42,10 @@ class RtsPluginContractTest(unittest.TestCase):
         self.assertIn("strength * elapsedTicks", self.source)
         self.assertIn("0.5d * elapsedTicks", self.source)
         self.assertIn("Vars.state.tick < nextDeadUnitCleanupTick", self.source)
+        self.assertIn("RTS_QUEUE_UPDATE_INTERVAL_TICKS = 6d", self.source)
+        self.assertIn("RTS_SQUAD_MAINTENANCE_INTERVAL_TICKS = 15d", self.source)
+        self.assertIn("Vars.state.tick < nextRtsQueueUpdateTick", self.source)
+        self.assertIn("Vars.state.tick < nextRtsSquadMaintenanceTick", self.source)
 
     def test_training_can_stage_units_in_persistent_squads(self) -> None:
         self.assertIn('"training_squad_requires_rally"', self.source)
@@ -67,11 +71,21 @@ class RtsPluginContractTest(unittest.TestCase):
         self.assertIn("GAME_THREAD_REQUEST_TIMEOUT_SECONDS = 20", self.source)
         self.assertIn("future.get(GAME_THREAD_REQUEST_TIMEOUT_SECONDS", self.source)
 
-    def test_showcase_uses_tactical_terrain_v3(self) -> None:
-        self.assertIn("symmetric_three_lane_tactical_showcase_v3", self.source)
+    def test_showcase_uses_tactical_terrain_v4(self) -> None:
+        self.assertIn("symmetric_three_lane_tactical_showcase_v4", self.source)
         self.assertIn("placeMirroredXTerrainRect", self.source)
-        self.assertIn("long southern S-bend rear approach", self.source)
+        self.assertIn("long southern two-bend rear approach", self.source)
         self.assertIn("air-only shortcuts across the neutral ridge", self.source)
+
+    def test_defense_samples_expose_forward_tactical_geometry(self) -> None:
+        self.assertIn('placement.put("defensive_zone", defensiveZone(anchorSteps))', self.source)
+        self.assertIn('placement.put("frontline_relation", "between_core_and_ground_entry")', self.source)
+        self.assertIn('value.put("strategic_defense_zones"', self.source)
+        self.assertIn('return "forward_choke"', self.source)
+        self.assertIn("defenseApproachTargets(core)", self.source)
+        self.assertIn('value.put("approach_lane", rtsApproachLane(spawn[1]))', self.source)
+        self.assertIn('return "north_industry"', self.source)
+        self.assertIn('return "south_advanced"', self.source)
 
 
 if __name__ == "__main__":

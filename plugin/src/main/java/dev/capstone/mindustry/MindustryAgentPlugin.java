@@ -148,6 +148,8 @@ public final class MindustryAgentPlugin extends Plugin {
     private static final int MAX_PLACEMENT_HINTS_PER_BLOCK = 220;
     private static final int MACRO_PATH_RADIUS = 64;
     private static final double RTS_SQUAD_UPDATE_INTERVAL_TICKS = 30d;
+    private static final double RTS_SQUAD_MAINTENANCE_INTERVAL_TICKS = 15d;
+    private static final double RTS_QUEUE_UPDATE_INTERVAL_TICKS = 6d;
     private static final double RTS_EMPTY_SQUAD_RETENTION_TICKS = 30d * 60d;
     private static final double CORE_DEFENDER_RESPAWN_DELAY_TICKS = 12d * 60d;
     private static final double RTS_CONTROL_CAPTURE_RADIUS_TILES = 11d;
@@ -190,6 +192,8 @@ public final class MindustryAgentPlugin extends Plugin {
     private double lastRtsControlUpdateTick;
     private double nextRtsControlUpdateTick;
     private double nextDeadUnitCleanupTick;
+    private double nextRtsQueueUpdateTick;
+    private double nextRtsSquadMaintenanceTick;
     private double nextRtsControlLabelTick;
     private double nextSpectatorHudTick;
     private boolean spectatorHudVisible;
@@ -219,6 +223,8 @@ public final class MindustryAgentPlugin extends Plugin {
             lastRtsControlUpdateTick = 0d;
             nextRtsControlUpdateTick = 0d;
             nextDeadUnitCleanupTick = 0d;
+            nextRtsQueueUpdateTick = 0d;
+            nextRtsSquadMaintenanceTick = 0d;
             nextRtsControlLabelTick = 0d;
             nextSpectatorHudTick = 0d;
             spectatorHudVisible = false;
@@ -229,9 +235,7 @@ public final class MindustryAgentPlugin extends Plugin {
         });
         Events.run(Trigger.update, () -> {
             updateCoreDefender();
-            updateRtsConstruction();
-            updateRtsTraining();
-            updateRtsUpgrades();
+            updateRtsTimedQueues();
             updateRtsControlPoints();
             updateRtsControlPointVisuals();
             cleanupDeadRtsUnits();
@@ -675,8 +679,7 @@ public final class MindustryAgentPlugin extends Plugin {
         int dividerRight = sumX - dividerLeft;
         int neutralWallTiles = 0;
 
-        // Each lane has a different readable footprint: a broad northern maneuver space, a narrow
-        // central choke, and a southern route whose approach walls force a longer S-shaped detour.
+        // Floors communicate navigable fronts without making every lane one featureless rectangle.
         for (int index = 0; index < laneCenters.length; index++) {
             int laneCenter = laneCenters[index], halfHeight = laneHalfHeights[index];
             paintFloorRect(0, laneCenter - halfHeight, Vars.world.width() - 1,
@@ -709,37 +712,59 @@ public final class MindustryAgentPlugin extends Plugin {
         }
 
         int tacticalCoverTiles = 0;
-        // North: sparse, offset cover and a wide mouth favor movement, spreading and heavy formations.
-        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 18, laneCenters[0] - 9,
-            dividerLeft - 15, laneCenters[0] - 5, Blocks.stoneWall, sumX);
-        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 8, laneCenters[0] + 5,
-            dividerLeft - 6, laneCenters[0] + 8, Blocks.stoneWall, sumX);
+        CoreBuild leftCore = sourceCore.tileX() <= targetCore.tileX() ? sourceCore : targetCore;
 
-        // Center: a short but narrow opening with paired firing screens is the easiest route to fortify.
-        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 12, laneCenters[1] + 5,
-            dividerLeft - 5, laneCenters[1] + 8, Blocks.stoneWall, sumX);
-        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 12, laneCenters[1] - 8,
+        // Every base has an open, buildable defensive shelf in front of the core. Short stone wings
+        // define the gate but deliberately leave a broad center opening and two rotation exits.
+        int leftGateX = leftCore.tileX() + 15;
+        tacticalCoverTiles += placeMirroredXTerrainRect(leftGateX, centerY + 7,
+            leftGateX + 3, centerY + 11, Blocks.stoneWall, sumX);
+        tacticalCoverTiles += placeMirroredXTerrainRect(leftGateX, centerY - 11,
+            leftGateX + 3, centerY - 7, Blocks.stoneWall, sumX);
+
+        // North: staggered islands split the wide field into two sub-routes. They support concaves,
+        // flanking and ranged kiting while preserving enough width for heavy formations.
+        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 29, laneCenters[0] - 8,
+            dividerLeft - 25, laneCenters[0] - 4, Blocks.stoneWall, sumX);
+        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 19, laneCenters[0] + 3,
+            dividerLeft - 15, laneCenters[0] + 8, Blocks.stoneWall, sumX);
+        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 8, laneCenters[0] - 7,
+            dividerLeft - 5, laneCenters[0] - 3, Blocks.stoneWall, sumX);
+
+        // Center: two offset firing screens create a short exposed bridge, then a separate fallback
+        // gate on each home side. A defender can fortify either line without sealing the route.
+        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 13, laneCenters[1] + 5,
+            dividerLeft - 6, laneCenters[1] + 8, Blocks.stoneWall, sumX);
+        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 9, laneCenters[1] - 8,
             dividerLeft - 5, laneCenters[1] - 5, Blocks.stoneWall, sumX);
+        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 27, laneCenters[1] + 6,
+            dividerLeft - 24, laneCenters[1] + 9, Blocks.stoneWall, sumX);
 
-        // South: mirrored approach barriers leave alternating lower/upper gates. Ground forces must
-        // bend around them before and after the objective instead of receiving a direct firing line.
-        tacticalCoverTiles += placeTerrainRect(dividerLeft - 25, laneCenters[2] - 1,
-            dividerLeft - 20, laneCenters[2] + 9, Blocks.stoneWall);
-        tacticalCoverTiles += placeTerrainRect(sumX - (dividerLeft - 20), laneCenters[2] - 9,
-            sumX - (dividerLeft - 25), laneCenters[2] + 1, Blocks.stoneWall);
-        tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 10, laneCenters[2] + 4,
-            dividerLeft - 7, laneCenters[2] + 7, Blocks.stoneWall, sumX);
+        // South: alternating barriers form a long S-route with two bends and side pockets. The route
+        // is slower but emerges away from the direct center firing line, enabling rear pressure.
+        tacticalCoverTiles += placeTerrainRect(dividerLeft - 31, laneCenters[2] - 2,
+            dividerLeft - 26, laneCenters[2] + 7, Blocks.stoneWall);
+        tacticalCoverTiles += placeTerrainRect(dividerLeft - 20, laneCenters[2] - 7,
+            dividerLeft - 15, laneCenters[2] + 2, Blocks.stoneWall);
+        tacticalCoverTiles += placeTerrainRect(dividerLeft - 9, laneCenters[2] - 1,
+            dividerLeft - 5, laneCenters[2] + 7, Blocks.stoneWall);
+        tacticalCoverTiles += placeTerrainRect(sumX - (dividerLeft - 26), laneCenters[2] - 7,
+            sumX - (dividerLeft - 31), laneCenters[2] + 2, Blocks.stoneWall);
+        tacticalCoverTiles += placeTerrainRect(sumX - (dividerLeft - 15), laneCenters[2] - 2,
+            sumX - (dividerLeft - 20), laneCenters[2] + 7, Blocks.stoneWall);
+        tacticalCoverTiles += placeTerrainRect(sumX - (dividerLeft - 5), laneCenters[2] - 7,
+            sumX - (dividerLeft - 9), laneCenters[2] + 1, Blocks.stoneWall);
 
         List<Map<String, Object>> lanes = new ArrayList<>();
         lanes.add(strategicLane(
             "north_industry", "north", dividerLeft, dividerRight, laneCenters[0], laneHalfHeights[0],
-            "wide maneuver corridor with sparse cover, generous formation width, and room for mobile or heavy forces",
-            "short_flank", "wide", "preferred_staging_space_for_large_ground_formations"
+            "wide maneuver corridor split by staggered cover islands into two sub-routes, with concave firing pockets and room for mobile or heavy forces",
+            "short_flank", "wide_split_field", "formation_maneuver_and_flanking"
         ));
         lanes.add(strategicLane(
             "center_technology", "center", dividerLeft, dividerRight, laneCenters[1], laneHalfHeights[1],
-            "shortest direct crossing with a narrow mouth and paired firing screens; easy to fortify or contest",
-            "shortest", "narrow", "ground_choke"
+            "shortest direct crossing with a narrow bridge, paired firing screens, and a separate home-side fallback gate",
+            "shortest", "narrow_two_stage", "bridge_choke_and_fallback_line"
         ));
         lanes.add(strategicLane(
             "south_advanced", "south", dividerLeft, dividerRight, laneCenters[2], laneHalfHeights[2],
@@ -748,7 +773,7 @@ public final class MindustryAgentPlugin extends Plugin {
         ));
 
         return Map.ofEntries(
-            Map.entry("style", "symmetric_three_lane_tactical_showcase_v3"),
+            Map.entry("style", "symmetric_three_lane_tactical_showcase_v4"),
             Map.entry("ground_route_choices", 3),
             Map.entry("neutral_divider_x_min", dividerLeft),
             Map.entry("neutral_divider_x_max", dividerRight),
@@ -759,9 +784,10 @@ public final class MindustryAgentPlugin extends Plugin {
             Map.entry("heavy_ground_behavior", "the wide north corridor provides the clearest staging and turning space for large ground formations; it is not a unit-type lock"),
             Map.entry("lanes", lanes),
             Map.entry("tactical_features", List.of(
-                "wide northern maneuver lane with sparse cover",
-                "short fortified central choke",
-                "long southern S-bend rear approach",
+                "wide northern split field with staggered cover and concave pockets",
+                "short central bridge choke with a second fallback line",
+                "long southern two-bend rear approach with side pockets",
+                "open buildable defensive shelves between each core and its lane entrances",
                 "solid terrain that blocks ground passage and direct firing lines",
                 "air-only shortcuts across the neutral ridge",
                 "open home-side rotation space between lanes"
@@ -2743,7 +2769,7 @@ public final class MindustryAgentPlugin extends Plugin {
         ));
 
         List<Map<String, Object>> directions = new ArrayList<>();
-        for (int[] spawn : spawnTargets(core.tileX(), core.tileY())) {
+        for (int[] spawn : defenseApproachTargets(core)) {
             directions.add(defenseDirectionState(core, spawn, turrets, walls));
         }
         result.put("approach_directions", directions);
@@ -2840,6 +2866,7 @@ public final class MindustryAgentPlugin extends Plugin {
 
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("direction_id", directionId);
+        value.put("approach_lane", rtsApproachLane(spawn[1]));
         value.put("spawn", Map.of("x", spawn[0], "y", spawn[1]));
         value.put("ground_route_reachable", groundReachable);
         value.put("ground_route_length_tiles", groundReachable ? groundPath.size() - 1 : null);
@@ -2859,8 +2886,10 @@ public final class MindustryAgentPlugin extends Plugin {
             List.of("start_steps_from_core", "end_steps_from_core", "sampled_tiles"));
         value.put("existing_turret_route_engagements",
             existingTurretRouteEngagements(turrets, groundPath, core, spawn));
+        value.put("strategic_defense_zones",
+            strategicDefenseZones(core, groundPath));
         value.put("placement_sample_contract",
-            "Every row is currently placeable and can engage at least one sampled ground or air route point. Rows are evenly sampled after x/y sorting; they have no score, rank, adequacy judgment, or recommendation.");
+            "Every row is currently placeable, lies in front of the core toward this ground approach, and can engage at least one sampled route point. defensive_zone and frontline_relation are geometric facts, not a score, quota, adequacy judgment, or recommendation. Rear anti-air remains legal through ordinary placement hints but is intentionally separated from ground-front samples.");
         value.put("valid_turret_placement_samples",
             defensePlacementCandidates(core, groundPath, spawn));
         value.put("wall_placement_sample_contract",
@@ -2868,6 +2897,34 @@ public final class MindustryAgentPlugin extends Plugin {
         value.put("valid_wall_placement_samples",
             defenseWallPlacementCandidates(core, groundPath));
         return value;
+    }
+
+    private List<int[]> defenseApproachTargets(CoreBuild core) {
+        if (!"stockpile_rts_pvp".equals(gameModeVariant) || Vars.state == null || !Vars.state.rules.pvp) {
+            return spawnTargets(core.tileX(), core.tileY());
+        }
+        CoreBuild enemyCore = null;
+        for (Team team : Team.all) {
+            if (team == core.team || team == Team.derelict || team.core() == null) continue;
+            enemyCore = team.core();
+            break;
+        }
+        if (enemyCore == null) return spawnTargets(core.tileX(), core.tileY());
+        int direction = Integer.compare(enemyCore.tileX(), core.tileX());
+        int crossingX = (core.tileX() + enemyCore.tileX()) / 2 + direction * 4;
+        int centerY = (core.tileY() + enemyCore.tileY()) / 2;
+        return List.of(
+            new int[]{crossingX, centerY + 28},
+            new int[]{crossingX, centerY},
+            new int[]{crossingX, centerY - 28}
+        );
+    }
+
+    private String rtsApproachLane(int y) {
+        int centerY = Vars.world.height() / 2;
+        if (y > centerY + 14) return "north_industry";
+        if (y < centerY - 14) return "south_advanced";
+        return "center_technology";
     }
 
     private Map<String, List<Map<String, Object>>> defensePlacementCandidates(
@@ -2884,10 +2941,21 @@ public final class MindustryAgentPlugin extends Plugin {
         for (Block candidateBlock : candidatesBlocks.subList(0, Math.min(candidatesBlocks.size(), 16))) {
             Turret turret = (Turret) candidateBlock;
             List<Map<String, Object>> placements = new ArrayList<>();
-            for (int radius = core.block.size / 2 + 1; radius <= 18; radius++) {
-                for (int x = core.tileX() - radius; x <= core.tileX() + radius; x++) {
-                    for (int y = core.tileY() - radius; y <= core.tileY() + radius; y++) {
-                        if (Math.max(Math.abs(x - core.tileX()), Math.abs(y - core.tileY())) != radius) continue;
+            Map<Integer, Integer> searchTiles = defenseSearchTiles(core, groundPath, airThreat);
+            int[] threatReference = groundPath == null || groundPath.size() < 2
+                ? airThreat : pathPointFromCore(groundPath, Math.min(24, groundPath.size() - 1));
+            double threatDx = threatReference[0] - core.tileX();
+            double threatDy = threatReference[1] - core.tileY();
+            double threatLength = Math.max(1d, Math.sqrt(threatDx * threatDx + threatDy * threatDy));
+            double threatUx = threatDx / threatLength, threatUy = threatDy / threatLength;
+            for (Map.Entry<Integer, Integer> searchTile : searchTiles.entrySet()) {
+                int anchorKey = searchTile.getKey();
+                int anchorX = anchorKey % Vars.world.width(), anchorY = anchorKey / Vars.world.width();
+                int anchorSteps = searchTile.getValue();
+                for (int x = anchorX - 2; x <= anchorX + 2; x++) {
+                    for (int y = anchorY - 2; y <= anchorY + 2; y++) {
+                        double forward = (x - core.tileX()) * threatUx + (y - core.tileY()) * threatUy;
+                        if (forward <= core.block.size / 2d + 1d) continue;
                         if (!Build.validPlace(candidateBlock, controlledTeam(), x, y, 0)
                             || ("stockpile_rts_pvp".equals(gameModeVariant)
                                 && rtsPlacementReserved(candidateBlock, x, y))) continue;
@@ -2899,6 +2967,11 @@ public final class MindustryAgentPlugin extends Plugin {
                         Map<String, Object> placement = new LinkedHashMap<>();
                         placement.put("x", x);
                         placement.put("y", y);
+                        placement.put("distance_from_core_tiles", Math.sqrt(distance2(
+                            x, y, core.tileX(), core.tileY())));
+                        placement.put("anchor_steps_from_core", anchorSteps);
+                        placement.put("defensive_zone", defensiveZone(anchorSteps));
+                        placement.put("frontline_relation", "between_core_and_ground_entry");
                         placement.put("ground_route_intervals", groundIntervals);
                         placement.put("air_route_distance_intervals", airIntervals);
                         placements.add(placement);
@@ -2913,6 +2986,61 @@ public final class MindustryAgentPlugin extends Plugin {
         return result;
     }
 
+    private Map<Integer, Integer> defenseSearchTiles(CoreBuild core, List<int[]> groundPath, int[] airThreat) {
+        Map<Integer, Integer> result = new LinkedHashMap<>();
+        if (groundPath != null && groundPath.size() > 1) {
+            int lastStep = groundPath.size() - 1;
+            for (int requested : new int[]{8, 16, 26, 38, 50}) {
+                int steps = Math.min(requested, lastStep);
+                if (steps <= core.block.size / 2 + 1) continue;
+                int[] point = pathPointFromCore(groundPath, steps);
+                result.putIfAbsent(tileKey(point[0], point[1]), steps);
+            }
+            return result;
+        }
+        double dx = airThreat[0] - core.tileX(), dy = airThreat[1] - core.tileY();
+        double length = Math.max(1d, Math.sqrt(dx * dx + dy * dy));
+        for (int requested : new int[]{8, 16, 26, 38, 50}) {
+            int steps = Math.min(requested, (int) Math.floor(length));
+            int x = (int) Math.round(core.tileX() + dx / length * steps);
+            int y = (int) Math.round(core.tileY() + dy / length * steps);
+            int key = tileKey(x, y);
+            if (key >= 0) result.putIfAbsent(key, steps);
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> strategicDefenseZones(CoreBuild core, List<int[]> groundPath) {
+        if (groundPath == null || groundPath.size() < 2) return List.of();
+        List<Map<String, Object>> result = new ArrayList<>();
+        int lastStep = groundPath.size() - 1;
+        for (int requested : new int[]{10, 24, 42}) {
+            int steps = Math.min(requested, lastStep);
+            if (result.stream().anyMatch(row -> ((Number) row.get("steps_from_core")).intValue() == steps)) {
+                continue;
+            }
+            int[] point = pathPointFromCore(groundPath, steps);
+            result.add(Map.of(
+                "zone", defensiveZone(steps),
+                "route_anchor_x", point[0],
+                "route_anchor_y", point[1],
+                "steps_from_core", steps,
+                "meaning", switch (defensiveZone(steps)) {
+                    case "base_gate" -> "fallback line in front of the core and production area";
+                    case "lane_screen" -> "intermediate line that screens rotations and reinforcements";
+                    default -> "forward line near a contested crossing or approach";
+                }
+            ));
+        }
+        return result;
+    }
+
+    private String defensiveZone(int stepsFromCore) {
+        if (stepsFromCore <= 14) return "base_gate";
+        if (stepsFromCore <= 30) return "lane_screen";
+        return "forward_choke";
+    }
+
     private Map<String, List<Map<String, Object>>> defenseWallPlacementCandidates(
         CoreBuild core, List<int[]> groundPath) {
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
@@ -2925,7 +3053,7 @@ public final class MindustryAgentPlugin extends Plugin {
         }
         wallBlocks.sort(Comparator.comparing(block -> block.name));
         int firstStep = Math.max(3, core.block.size / 2 + 2);
-        int lastStep = Math.min(30, groundPath.size() - 1);
+        int lastStep = Math.min(48, groundPath.size() - 1);
         for (Block wallBlock : wallBlocks) {
             Map<Integer, Map<String, Object>> unique = new LinkedHashMap<>();
             for (int steps = firstStep; steps <= lastStep; steps++) {
@@ -2937,7 +3065,9 @@ public final class MindustryAgentPlugin extends Plugin {
                         if ("stockpile_rts_pvp".equals(gameModeVariant)
                             && rtsPlacementReserved(wallBlock, x, y)) continue;
                         unique.putIfAbsent(tileKey(x, y), Map.of(
-                            "x", x, "y", y, "steps_from_core", steps
+                            "x", x, "y", y, "steps_from_core", steps,
+                            "defensive_zone", defensiveZone(steps),
+                            "frontline_relation", "between_core_and_ground_entry"
                         ));
                     }
                 }
@@ -4052,6 +4182,16 @@ public final class MindustryAgentPlugin extends Plugin {
         return false;
     }
 
+    private void updateRtsTimedQueues() {
+        if (!"stockpile_rts_pvp".equals(gameModeVariant) || Vars.state == null
+            || !Vars.state.isGame() || Vars.state.gameOver) return;
+        if (Vars.state.tick < nextRtsQueueUpdateTick) return;
+        nextRtsQueueUpdateTick = Vars.state.tick + RTS_QUEUE_UPDATE_INTERVAL_TICKS;
+        updateRtsConstruction();
+        updateRtsTraining();
+        updateRtsUpgrades();
+    }
+
     private void updateRtsConstruction() {
         if (!"stockpile_rts_pvp".equals(gameModeVariant) || Vars.state == null || !Vars.state.isGame()
             || Vars.state.gameOver) return;
@@ -5093,6 +5233,8 @@ public final class MindustryAgentPlugin extends Plugin {
     private void updateRtsSquads() {
         if (!"stockpile_rts_pvp".equals(gameModeVariant) || Vars.state == null
             || !Vars.state.isGame() || Vars.state.gameOver) return;
+        if (Vars.state.tick < nextRtsSquadMaintenanceTick) return;
+        nextRtsSquadMaintenanceTick = Vars.state.tick + RTS_SQUAD_MAINTENANCE_INTERVAL_TICKS;
         for (Team team : configuredAgentTeams()) {
             TeamAgentState state = teamAgentState(team);
             CoreBuild core = team.core();
