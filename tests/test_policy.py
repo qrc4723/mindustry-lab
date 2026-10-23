@@ -746,11 +746,42 @@ class PolicyTest(unittest.TestCase):
         approach = compact["rts_defense"]["approach_directions"][0]
         self.assertEqual(approach["valid_turret_placement_samples"]["duo"]["rows"][0][0:2], [20, 10])
         self.assertNotIn("arc", approach["valid_turret_placement_samples"])
-        self.assertEqual(
-            approach["valid_wall_placement_samples"]["copper-wall"]["rows"][0],
-            [18, 10, 8, None, None],
-        )
+        wall_group = approach["valid_wall_placement_groups"][0]
+        self.assertEqual(wall_group["compatible_walls"], ["copper-wall"])
+        self.assertEqual(wall_group["rows"][0], [18, 10, 8, None, None])
         self.assertEqual(compact["immediate_evidence_digest"]["defense_totals"]["walls"], 1)
+        self.assertIn("rts_operational_summary", compact)
+        self.assertEqual(
+            compact["rts_operational_summary"]["coordination"]["combat_squads_with_1_or_2_members"],
+            0,
+        )
+
+    def test_compacts_individual_combat_hits_but_keeps_recent_outcomes(self) -> None:
+        events = [
+            {"seconds_ago": 10 - index, "attacker_unit": "dagger", "target_type": "mace",
+             "raw_damage": 10, "x": index, "y": 4}
+            for index in range(10)
+        ]
+        compact = compact_state({
+            "rules": {"pvp": True},
+            "recent_unit_combat": {
+                "meaning": "combat facts",
+                "self": {
+                    "team": "sharded",
+                    "last_10_seconds": {"raw_damage": 100, "hits": 10,
+                                        "by_attacker_unit": [{"unit": "dagger", "damage": 100}]},
+                    "last_30_seconds": {"raw_damage": 100, "hits": 10,
+                                        "by_attacker_unit": [{"unit": "dagger", "damage": 100}]},
+                    "recent_events": events,
+                    "recent_events_omitted": 0,
+                },
+                "opponents": [],
+            },
+        })
+        combat = compact["recent_unit_combat"]["self"]
+        self.assertEqual(combat["last_10_seconds"]["raw_damage"], 100)
+        self.assertEqual(len(combat["recent_events"]), 6)
+        self.assertEqual(combat["recent_events_omitted"], 4)
 
     def test_exposes_attack_unit_production_requirements_without_a_build_order(self) -> None:
         state = {

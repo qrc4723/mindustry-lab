@@ -4910,7 +4910,9 @@ public final class MindustryAgentPlugin extends Plugin {
         }
 
         totalCost.forEach((item, amount) -> core.items.remove(item, amount));
-        for (int input = 0; input < count; input++) inputs.get(input).remove();
+        // A server-only Unit.remove() leaves an alive-looking ghost on connected clients. Upgrading
+        // consumes the input without a death explosion, so use the synchronized despawn RPC.
+        for (int input = 0; input < count; input++) Call.unitDespawn(inputs.get(input));
         RtsUpgradeOrder order = new RtsUpgradeOrder(
             controlledTeam(), x, y, fromName, toName, count, block.constructTime,
             Vars.state.tick + block.constructTime, Vars.state.tick, namedCost(totalCost)

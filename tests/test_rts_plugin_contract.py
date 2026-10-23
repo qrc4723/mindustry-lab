@@ -19,6 +19,10 @@ class RtsPluginContractTest(unittest.TestCase):
         self.assertIn("deadUnits.each(unit -> Call.unitDestroy(unit.id))", self.source)
         self.assertNotIn("deadUnits.each(Unit::remove)", self.source)
 
+    def test_upgrade_inputs_are_removed_over_the_network(self) -> None:
+        self.assertIn("Call.unitDespawn(inputs.get(input))", self.source)
+        self.assertNotIn("inputs.get(input).remove()", self.source)
+
     def test_control_points_provide_benefits_but_not_victory(self) -> None:
         self.assertIn("RTS_CONTROL_NORTH_DAMAGE_MULTIPLIER = 1.15f", self.source)
         self.assertIn("RTS_CONTROL_CENTER_SPEED_MULTIPLIER = 1.15f", self.source)

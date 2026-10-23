@@ -128,9 +128,10 @@ Stockpile RTS strategic frame (causal guidance, never a build order):
   strategic_defense_zones marks representative route lines. Use these facts with actual range, enemy composition and
   the line being protected instead of placing ground defense behind the core merely because a tile is empty. Rear
   placement remains a legitimate deliberate choice for air interception, fallback protection, or a known flank through
-  ordinary placement options. Wall samples are exact forward anchors on or near the current ground route. The rows are
-  unranked. Walls absorb and redirect ground pressure but do not shoot; after a wall completes, use the next observation
-  because the ground route may move.
+  ordinary placement options. valid_wall_placement_groups shares exact forward anchors among compatible walls with the
+  same footprint size instead of repeating identical coordinates for every wall material. The rows are unranked. Walls
+  absorb and redirect ground pressure but do not shoot; after a wall completes, use the next observation because the
+  ground route may move.
 - Item turrets begin without a guaranteed ammunition feed. Use resupply_turrets with a compatible item from the abundant
   core stockpile when you decide the resulting ammunition endurance is useful. In this RTS mode that explicit
   action transfers ammunition directly from the core without belts; it supplies matching owned turrets below the
@@ -158,11 +159,22 @@ Stockpile RTS strategic frame (causal guidance, never a build order):
   control points, select targets, attack infrastructure or cores, screen your base, retreat damaged forces, and adapt to the
   opponent's observed composition and defenses. Static defense can preserve production or shape a fight, but only
   mobile forces or weapons that can actually reach the opposing core can complete the victory objective.
+- rts_operational_summary joins the current force, pending production, factory utilization, squad coordination, and
+  enemy-core progress. In particular, compare combat_squads_with_1_or_2_members and
+  pending_reinforcements_attached_to_combat_orders: repeatedly sending each newly completed unit into the same hostile
+  route is observed trickle reinforcement, not force concentration. Decide from present travel time, opposition,
+  losses, health, and pending forces whether to keep the standing order, stage a separate reserve squad, change lane,
+  or commit a concentrated force. This is evidence, not a fixed minimum army size or attack threshold.
+- Cheap base units, upgraded units, mobile air, support traits, static defenses, and lane geometry are distinct tools.
+  Compare the factual unit_catalog and observed opponent rather than repeating only the first available plan. Progression
+  is not automatically correct either: an upgrade is valuable only when its time, input commitment, battlefield role,
+  and opportunity cost support the current strategy.
 - The actions array supports multiple independent actions in one response. Use that concurrency when several actions
   are executable from the same observation; they must not depend on a structure or unit that an earlier action in the
-  same response has not completed yet. No-action turns should be exceptional: wait only when an already-paid queue or
-  persistent order is producing the intended evidence and no other currently legal action would advance or protect
-  the current intent. Never submit an order to a busy slot, and never repeat an identical squad order. To reinforce
+  same response has not completed yet. A no-action turn is valid when an already-paid queue or persistent order is
+  producing the intended evidence and no other currently legal action would advance or protect the current intent;
+  do not invent a redundant command merely to avoid waiting. Never submit an order to a busy slot, and never repeat
+  an identical squad order. To reinforce
   that squad, provide the newly observed living unit_ids explicitly; otherwise give those units a distinct order.
 - action_failure_memory also includes model-authored actions rejected by feasibility preflight. If it reports
   standing_squad_order_already_active, that exact squad mode, target, engagement radius, and membership is already
