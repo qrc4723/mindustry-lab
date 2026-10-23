@@ -57,11 +57,10 @@ Stockpile RTS strategic frame (causal guidance, never a build order):
 - Construction and training still expose their actual costs. Decide how to use build time, factory slots, unit
   composition, parallel production, replacements, and battlefield position; those are the intended constraints.
 - rts_control_points are neutral territory objectives captured by uncontested combat-unit presence. They never satisfy
-  the victory condition and provide no resource income. Secure north control gives 10% faster unit training and
-  upgrading. Secure center control adds exact opponent construction/training/upgrade queues and squad orders under
-  rts_tactical_intelligence; basic current unit/building positions remain fully visible to both teams without it.
-  Secure south control repairs friendly combat units by 1% and friendly structures by 0.5% of maximum health per
-  second inside its radius. A benefit is inactive while capture is in progress or contested. Hostile takeover first
+  the victory condition and provide no resource income. Secure north control increases damage dealt by every combat
+  unit on the owning team by 15%. Secure center control increases movement speed of every combat unit on the owning
+  team by 15%. Secure south control divides incoming damage to every combat unit on the owning team by 1.15. These
+  are team-wide effects, not radius-limited effects. A benefit is inactive while capture is in progress or contested. Hostile takeover first
   neutralizes the point, followed by a five-second forced-neutral lock before either team can capture it. Additional
   friendly occupants accelerate either capture stage only up to 1.5x. Each point reports its benefit, capture phase,
   neutral-lock time, ownership/progress, and local force presence; rts_control_benefits summarizes currently active

@@ -20,19 +20,28 @@ class RtsPluginContractTest(unittest.TestCase):
         self.assertNotIn("deadUnits.each(Unit::remove)", self.source)
 
     def test_control_points_provide_benefits_but_not_victory(self) -> None:
-        self.assertIn("RTS_CONTROL_NORTH_PRODUCTION_SPEED_BONUS = 0.10d", self.source)
-        self.assertIn("RTS_CONTROL_REPAIR_MAX_HEALTH_PER_SECOND = 0.01d", self.source)
-        self.assertIn("RTS_CONTROL_STRUCTURE_REPAIR_MAX_HEALTH_PER_SECOND = 0.005d", self.source)
+        self.assertIn("RTS_CONTROL_NORTH_DAMAGE_MULTIPLIER = 1.15f", self.source)
+        self.assertIn("RTS_CONTROL_CENTER_SPEED_MULTIPLIER = 1.15f", self.source)
+        self.assertIn("RTS_CONTROL_SOUTH_DEFENSE_MULTIPLIER = 1.15f", self.source)
         self.assertIn("RTS_CONTROL_NEUTRAL_LOCK_SECONDS = 5d", self.source)
-        self.assertIn("rtsProductionSpeedMultiplier", self.source)
-        self.assertIn("unit.heal", self.source)
-        self.assertIn("building.heal", self.source)
+        self.assertIn("applyRtsControlPointCombatBuffs", self.source)
+        self.assertIn("unit.applyDynamicStatus()", self.source)
+        self.assertIn("buff.damageMultiplier", self.source)
+        self.assertIn("buff.speedMultiplier", self.source)
+        self.assertIn("buff.healthMultiplier", self.source)
         self.assertIn("rtsTacticalIntelligenceState", self.source)
         self.assertIn("neutralized RTS control point", self.source)
         self.assertIn("activeRtsControlPointCount", self.source)
         self.assertIn("Math.min(1.5d", self.source)
         self.assertNotIn('gameEndReason = "all_three_control_points_', self.source)
         self.assertNotIn("income_items", self.source)
+
+    def test_per_frame_global_scans_are_throttled(self) -> None:
+        self.assertIn("RTS_CONTROL_UPDATE_INTERVAL_TICKS = 10d", self.source)
+        self.assertIn("RTS_DEAD_UNIT_CLEANUP_INTERVAL_TICKS = 15d", self.source)
+        self.assertIn("strength * elapsedTicks", self.source)
+        self.assertIn("0.5d * elapsedTicks", self.source)
+        self.assertIn("Vars.state.tick < nextDeadUnitCleanupTick", self.source)
 
     def test_training_can_stage_units_in_persistent_squads(self) -> None:
         self.assertIn('"training_squad_requires_rally"', self.source)

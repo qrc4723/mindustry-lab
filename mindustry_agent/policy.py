@@ -614,12 +614,6 @@ def _pvp_objective_state(state: dict[str, Any]) -> dict[str, Any]:
         for point in points:
             owner = str(point.get("owner", "neutral"))
             owner_counts[owner] = owner_counts.get(owner, 0) + 1
-        north_active = any(
-            point.get("id") == "north_industry"
-            and str(point.get("owner", "neutral")) == self_name
-            and point.get("benefit_active", True) is not False
-            for point in points
-        )
         own_points = owner_counts.get(self_name, 0)
         enemy_points = max(
             (count for owner, count in owner_counts.items()
@@ -637,24 +631,18 @@ def _pvp_objective_state(state: dict[str, Any]) -> dict[str, Any]:
             "most_owned_by_one_opponent": enemy_points,
             "neutral": owner_counts.get("neutral", 0),
             "ownership_by_team": owner_counts,
-            "north_unit_training_and_upgrade_speed_bonus_fraction": benefits.get(
-                "north_unit_training_and_upgrade_speed_bonus_fraction", 0.1
+            "north_combat_unit_damage_multiplier": benefits.get(
+                "north_combat_unit_damage_multiplier", 1.15
             ),
-            "center_operational_intelligence_active": benefits.get(
-                "center_operational_intelligence_active", False
+            "center_combat_unit_speed_multiplier": benefits.get(
+                "center_combat_unit_speed_multiplier", 1.15
             ),
-            "south_friendly_unit_repair_max_health_fraction_per_second_in_radius": benefits.get(
-                "south_friendly_unit_repair_max_health_fraction_per_second_in_radius", 0.01
-            ),
-            "south_friendly_structure_repair_max_health_fraction_per_second_in_radius": benefits.get(
-                "south_friendly_structure_repair_max_health_fraction_per_second_in_radius", 0.005
+            "south_combat_unit_incoming_damage_divisor": benefits.get(
+                "south_combat_unit_incoming_damage_divisor", 1.15
             ),
             "takeover_requires_neutralization": benefits.get("takeover_requires_neutralization", True),
             "neutral_lock_seconds_after_enemy_neutralization": benefits.get(
                 "neutral_lock_seconds_after_enemy_neutralization", 5.0
-            ),
-            "current_production_and_upgrade_speed_multiplier": benefits.get(
-                "current_production_and_upgrade_speed_multiplier", 1.1 if north_active else 1.0
             ),
             "teams": benefits.get("teams", {}),
         }
