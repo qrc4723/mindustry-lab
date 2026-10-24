@@ -82,6 +82,15 @@ class RtsPluginContractTest(unittest.TestCase):
         self.assertIn('if (includeDecisionAnalysis)', self.source)
         self.assertIn('if (includeStaticCatalog)', self.source)
 
+    def test_rts_construction_uses_parallel_slots_and_marks_destroyed_history(self) -> None:
+        self.assertIn("RTS_CONSTRUCTION_PARALLEL_SLOTS = 2", self.source)
+        self.assertIn("double[] slotAvailableAt", self.source)
+        self.assertIn('result.put("construction_slot"', self.source)
+        self.assertIn('row.put("construction_slot", order.slot + 1)', self.source)
+        self.assertIn('"completed_then_destroyed"', self.source)
+        self.assertIn('row.put("current_building_exists"', self.source)
+        self.assertIn('row.put("currently_usable"', self.source)
+
     def test_showcase_uses_tactical_terrain_v5(self) -> None:
         self.assertIn("symmetric_three_lane_tactical_showcase_v5", self.source)
         self.assertIn("three-region competitive arena", self.source)

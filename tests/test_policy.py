@@ -615,6 +615,9 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual(compact["rts_training_queues"][0]["remaining"], 3)
         self.assertEqual(compact["rts_upgrade_queues"][0]["remaining"], 1)
         self.assertEqual(compact["rts_construction_queue"][0]["status"], "queued")
+        construction_capacity = compact["rts_operational_summary"]["construction_capacity"]
+        self.assertEqual(construction_capacity["parallel_slots"], 2)
+        self.assertEqual(construction_capacity["pending_orders"], 1)
         self.assertNotIn("production_networks", compact)
         self.assertNotIn("logistics_analysis", compact)
         self.assertNotIn("power_networks", compact)
@@ -677,6 +680,35 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual(unit_rows["mace"]["estimated_dps"], 42.0)
         self.assertEqual(unit_rows["dagger"]["weapon_traits"]["mounts"], 2)
         self.assertIn("capability_tags", unit_rows["dagger"])
+
+    def test_destroyed_completed_construction_is_history_not_capacity(self) -> None:
+        state = {
+            "rules": {"pvp": True},
+            "game_mode_variant": {"id": "stockpile_rts_pvp"},
+            "core": {"items": {}},
+            "rts_construction_queue": [{
+                "block": "ground-factory", "x": 48, "y": 40,
+                "status": "completed_then_destroyed", "current_building_exists": False,
+                "currently_usable": False, "construction_slot": 1,
+            }, {
+                "block": "cyclone", "x": 30, "y": 40, "status": "queued",
+                "construction_slot": 2, "seconds_until_completion": 4.0,
+            }],
+        }
+
+        compact = compact_state(state)
+
+        self.assertEqual(len(compact["rts_construction_queue"]), 1)
+        self.assertEqual(compact["rts_construction_queue"][0]["block"], "cyclone")
+        history = compact["rts_queue_history_summary"]["rts_construction_queue"]
+        self.assertEqual(history["completed_then_destroyed_count"], 1)
+        self.assertEqual(history["recent_destroyed"], [{
+            "block": "ground-factory", "x": 48, "y": 40,
+        }])
+        self.assertIn("existing_instances", history["facility_authority"])
+        construction = compact["rts_operational_summary"]["construction_capacity"]
+        self.assertEqual(construction["occupied_slots"], 1)
+        self.assertEqual(construction["next_completions"][0]["construction_slot"], 2)
 
     def test_stockpile_rts_exposes_unranked_turret_wall_and_ammo_facts(self) -> None:
         state = {

@@ -1023,6 +1023,14 @@ def _stockpile_rts_operational_summary(
         unit_type = str(unit.get("type", "unknown"))
         enemy_types[unit_type] = enemy_types.get(unit_type, 0) + 1
     enemy_progress = objective.get("enemy_core_health_progress", {}) if isinstance(objective, dict) else {}
+    pending_construction = [
+        row for row in state.get("rts_construction_queue", [])
+        if isinstance(row, dict) and row.get("status") == "queued"
+    ]
+    next_construction = sorted(
+        pending_construction,
+        key=lambda row: float(row.get("seconds_until_completion", 0) or 0),
+    )[:6]
     return {
         "meaning": (
             "Joined current coordination facts, not a required army size, timing threshold, composition, or build order."
@@ -1057,6 +1065,23 @@ def _stockpile_rts_operational_summary(
                 isinstance(queue, dict) and queue.get("status") == "upgrading"
                 for queue in state.get("rts_upgrade_queues", [])
             ),
+        },
+        "construction_capacity": {
+            "parallel_slots": 2,
+            "pending_orders": len(pending_construction),
+            "occupied_slots": len({
+                int(row.get("construction_slot", 0) or 0)
+                for row in pending_construction if row.get("construction_slot")
+            }),
+            "next_completions": [
+                {
+                    key: row.get(key) for key in (
+                        "block", "x", "y", "construction_slot",
+                        "seconds_until_start", "seconds_until_completion",
+                    ) if row.get(key) is not None
+                }
+                for row in next_construction
+            ],
         },
         "victory_progress": {
             "enemy_core_damage_fraction": enemy_progress.get("damage_fraction", 0),
@@ -1632,15 +1657,29 @@ def compact_state(state: dict[str, Any]) -> dict[str, Any]:
         ]
         construction_active = [
             row for row in construction if row.get("status") not in {
-                "completed", "cancelled_invalid_at_completion", "cancelled"
+                "completed", "completed_then_destroyed", "cancelled_invalid_at_completion",
+                "cancelled", "cancelled_by_agent",
             }
         ]
         construction_finished = [row for row in construction if row not in construction_active]
-        compact["rts_construction_queue"] = construction_active + construction_finished[-3:]
+        destroyed_after_completion = [
+            row for row in construction if row.get("status") == "completed_then_destroyed"
+        ]
+        # Finished rows are history, not usable facilities. Keeping their coordinates beside the
+        # live production catalog caused models to issue orders to structures that no longer exist.
+        compact["rts_construction_queue"] = construction_active
         compact["rts_queue_history_summary"]["rts_construction_queue"] = {
             "active_count": len(construction_active),
             "finished_count": len(construction_finished),
-            "recent_finished_rows_included": min(3, len(construction_finished)),
+            "completed_then_destroyed_count": len(destroyed_after_completion),
+            "recent_destroyed": [
+                {key: row.get(key) for key in ("block", "x", "y")}
+                for row in destroyed_after_completion[-3:]
+            ],
+            "facility_authority": (
+                "History is not usable capacity. Only facility_id values in "
+                "offensive_production.*.existing_instances are currently operable."
+            ),
         }
         compact["rts_squads"] = [
             squad for squad in state.get("rts_squads", []) if isinstance(squad, dict)

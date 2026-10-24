@@ -136,6 +136,7 @@ public final class MindustryAgentPlugin extends Plugin {
     private static final int MAX_MACRO_COPPER = 5000;
     private static final int MAX_TURRETS_PER_DEFENSE_ACTION = 8;
     private static final int MAX_RTS_TRAIN_COUNT = 50;
+    private static final int RTS_CONSTRUCTION_PARALLEL_SLOTS = 2;
     private static final int MAX_BUILDINGS_IN_STATE = 300;
     private static final int MAX_UNITS_IN_STATE = 300;
     private static final int MAX_ORES_IN_STATE = 400;
@@ -950,7 +951,7 @@ public final class MindustryAgentPlugin extends Plugin {
         Map<String, Object> enriched = new LinkedHashMap<>(pvpFairness);
         enriched.put("equal_core_stockpile", named);
         enriched.put("resource_tile_counts_equal", true);
-        enriched.put("rts_construction", "each team has one identical sequential construction queue using standard block build times; strategic block choices are unrestricted");
+        enriched.put("rts_construction", "each team has two identical parallel construction slots using standard block build times; each slot remains sequential and strategic block choices are unrestricted");
         enriched.put("rts_training", "factory slots consume standard unit-plan item costs from an identical abundant all-item stockpile; production time and slot availability remain binding");
         enriched.put("rts_upgrading", "reconstructors consume standard item costs and time; input units are committed to an upgrade queue without belts, payload conveyors, liquids, or power");
         enriched.put("rts_defense", "item-ammunition turrets and walls use standard construction cost/time; compatible ammunition is transferred from the abundant core stockpile only by an explicit resupply_turrets action");
@@ -1406,7 +1407,7 @@ public final class MindustryAgentPlugin extends Plugin {
             "economy_and_logistics_required", !"stockpile_rts_pvp".equals(gameModeVariant),
             "decision_refresh_seconds", "stockpile_rts_pvp".equals(gameModeVariant) ? 0.5 : -1.0,
             "construction_mechanic", "stockpile_rts_pvp".equals(gameModeVariant)
-                ? "place reserves its standard core cost immediately and enters one sequential standard-build-time queue per team"
+                ? "place reserves its standard core cost immediately and enters the earliest of two parallel standard-build-time construction slots per team"
                 : "direct placement",
             "unit_training_mechanic", "stockpile_rts_pvp".equals(gameModeVariant)
                 ? "build unit factories and reconstructors; train_units and upgrade_units enforce standard item costs and production times against the core stockpile"
@@ -1468,7 +1469,7 @@ public final class MindustryAgentPlugin extends Plugin {
             "max_actions", MAX_ACTIONS_PER_REQUEST,
             "coordinates", "integer tile coordinates",
             "placement", "stockpile_rts_pvp".equals(gameModeVariant)
-                ? "server-validated coordinates; standard core cost is reserved immediately and each team executes one sequential standard-build-time queue"
+                ? "server-validated coordinates; standard core cost is reserved immediately and each team executes two parallel standard-build-time construction slots"
                 : "server-validated strategic macros and direct placement; standard validity and core costs enforced",
             "shape", Map.of(
                 "request_id", "string",
@@ -4222,16 +4223,24 @@ public final class MindustryAgentPlugin extends Plugin {
         int index, Block block, int x, int y, int rotation, Map<Item, Integer> cost
     ) {
         Team team = controlledTeam();
-        double startsAtTick = Vars.state.tick;
-        int position = 1;
+        double[] slotAvailableAt = new double[RTS_CONSTRUCTION_PARALLEL_SLOTS];
+        int[] slotPositions = new int[RTS_CONSTRUCTION_PARALLEL_SLOTS];
+        java.util.Arrays.fill(slotAvailableAt, Vars.state.tick);
         for (RtsConstructionOrder order : rtsConstructionOrders) {
             if (order.team != team || !"queued".equals(order.status)) continue;
-            startsAtTick = Math.max(startsAtTick, order.completesAtTick);
-            position++;
+            int slot = Math.max(0, Math.min(RTS_CONSTRUCTION_PARALLEL_SLOTS - 1, order.slot));
+            slotAvailableAt[slot] = Math.max(slotAvailableAt[slot], order.completesAtTick);
+            slotPositions[slot]++;
         }
+        int selectedSlot = 0;
+        for (int slot = 1; slot < RTS_CONSTRUCTION_PARALLEL_SLOTS; slot++) {
+            if (slotAvailableAt[slot] < slotAvailableAt[selectedSlot]) selectedSlot = slot;
+        }
+        double startsAtTick = slotAvailableAt[selectedSlot];
+        int position = slotPositions[selectedSlot] + 1;
         double buildTicks = Math.max(1d, block.buildTime);
         RtsConstructionOrder order = new RtsConstructionOrder(
-            team, block.name, x, y, rotation, buildTicks, startsAtTick,
+            team, block.name, x, y, rotation, selectedSlot, buildTicks, startsAtTick,
             startsAtTick + buildTicks, new LinkedHashMap<>(cost)
         );
         rtsConstructionOrders.add(order);
@@ -4246,14 +4255,15 @@ public final class MindustryAgentPlugin extends Plugin {
         result.put("y", y);
         result.put("rotation", rotation);
         result.put("cost_reserved_immediately", namedCost(cost));
-        result.put("team_queue_position", position);
+        result.put("construction_slot", selectedSlot + 1);
+        result.put("slot_queue_position", position);
         result.put("standard_build_time_seconds", buildTicks / 60d);
         result.put("seconds_until_construction_starts",
             Math.max(0d, startsAtTick - Vars.state.tick) / 60d);
         result.put("seconds_until_completed",
             Math.max(0d, order.completesAtTick - Vars.state.tick) / 60d);
         result.put("mechanic",
-            "One sequential construction queue per team; choices and queue order come only from that team's agent.");
+            "Two parallel construction slots per team; each slot is sequential and choices come only from that team's agent.");
         return result;
     }
 
@@ -4330,7 +4340,16 @@ public final class MindustryAgentPlugin extends Plugin {
             row.put("x", order.x);
             row.put("y", order.y);
             row.put("rotation", order.rotation);
-            row.put("status", order.status);
+            Tile tile = Vars.world.tile(order.x, order.y);
+            Building existing = tile == null ? null : tile.build;
+            boolean currentBuildingExists = existing != null && existing.team == team
+                && existing.block.name.equals(order.blockName);
+            String visibleStatus = "completed".equals(order.status) && !currentBuildingExists
+                ? "completed_then_destroyed" : order.status;
+            row.put("status", visibleStatus);
+            row.put("current_building_exists", currentBuildingExists);
+            row.put("currently_usable", currentBuildingExists);
+            row.put("construction_slot", order.slot + 1);
             row.put("cost_reserved", namedCost(order.cost));
             row.put("standard_build_time_seconds", order.buildTicks / 60d);
             row.put("seconds_until_start", "queued".equals(order.status)
@@ -6733,6 +6752,7 @@ public final class MindustryAgentPlugin extends Plugin {
         private final int x;
         private final int y;
         private final int rotation;
+        private final int slot;
         private final double buildTicks;
         private final double startsAtTick;
         private final double completesAtTick;
@@ -6740,7 +6760,7 @@ public final class MindustryAgentPlugin extends Plugin {
         private String status = "queued";
 
         private RtsConstructionOrder(
-            Team team, String blockName, int x, int y, int rotation, double buildTicks,
+            Team team, String blockName, int x, int y, int rotation, int slot, double buildTicks,
             double startsAtTick, double completesAtTick, Map<Item, Integer> cost
         ) {
             this.team = team;
@@ -6748,6 +6768,7 @@ public final class MindustryAgentPlugin extends Plugin {
             this.x = x;
             this.y = y;
             this.rotation = rotation;
+            this.slot = slot;
             this.buildTicks = buildTicks;
             this.startsAtTick = startsAtTick;
             this.completesAtTick = completesAtTick;

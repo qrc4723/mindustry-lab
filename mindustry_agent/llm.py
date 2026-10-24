@@ -78,15 +78,18 @@ Stockpile RTS strategic frame (causal guidance, never a build order):
   with forced turns. Solid neutral terrain blocks ground passage and direct firing lines, while flying units can use
   direct air-only shortcuts across it. Decide whether to concentrate, split, feint, rotate lanes, defend a choke, contest an
   advantageous point, or bypass terrain from the current forces and opponent. No lane, force ratio, or opening is preferred.
-- Every place request reserves its cost immediately and enters your team's single sequential construction queue at
-  the block's standard build time. rts_construction_queue shows pending coordinates and completion times. A long JSON
-  list is therefore a strategic queue, not instant parallel construction; do not train from a queued factory until its
+- Every place request reserves its cost immediately and enters the earliest of your team's two parallel construction
+  slots at the block's standard build time. Each slot remains sequential. rts_construction_queue shows pending
+  coordinates, assigned slots, and completion times; do not train from a queued factory until its
   status is completed and the building appears. A later action in the same response does not wait for queued
   construction: training, upgrading, or turret resupply aimed at that new structure will run before it exists and do
   nothing or fail. Observe the completed building in a later state before operating it. The opponent has the identical
   construction executor.
+- Finished construction history is not usable capacity, and completed_then_destroyed means the finished structure was
+  subsequently lost. For train_units and upgrade_units, only facility_id values present in the current
+  offensive_production existing_instances are legal; never reconstruct a facility reference from queue coordinates.
 - The action limit is not a target and an empty stockpile is not evidence of good play. Every extra placement commits
-  future construction time and delays everything behind it. Before adding production buildings, compare currently
+  future construction time in one slot and can delay later work assigned to that slot. Before adding production buildings, compare currently
   existing free slots, active paid queues, expected near-term output, and the opponent's present force. Enqueue only
   infrastructure whose role is justified by current evidence; do not fill the construction queue with speculative
   copies intended for a distant phase.
@@ -540,8 +543,9 @@ Available action skills:
   completed, is still progressing, or should be replaced.
 - {"type":"place","block":name,"x":int,"y":int,"rotation":0..3} performs an exact placement of any block
   present in available_blocks; standard costs, bans, visibility, and placement rules still apply. In stockpile RTS it
-  reserves cost and enters rts_construction_queue instead of appearing immediately; one construction per team runs at
-  a time in agent-chosen queue order. Removing the coordinate before completion cancels it and refunds reserved cost.
+  reserves cost and enters rts_construction_queue instead of appearing immediately. Stockpile RTS has two parallel
+  construction slots per team; each slot remains sequential, and the engine assigns a new order to the slot that
+  becomes available first. Removing the coordinate before completion cancels it and refunds reserved cost.
 
 Use observed_events, recent_defense_outcomes, and the current-episode infrastructure backlog to decide whether
 rebuilding, replacing with a different design, repairing, or accepting the loss is appropriate.
