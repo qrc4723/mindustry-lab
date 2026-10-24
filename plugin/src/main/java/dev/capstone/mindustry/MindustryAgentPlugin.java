@@ -1312,8 +1312,22 @@ public final class MindustryAgentPlugin extends Plugin {
             sendError(exchange, 405, "method_not_allowed", "Use GET.");
             return;
         }
+        String profile = "full";
+        String query = exchange.getRequestURI().getRawQuery();
+        if (query != null) {
+            for (String part : query.split("&")) {
+                if (part.startsWith("profile=")) profile = part.substring("profile=".length());
+            }
+        }
+        if (!Set.of("full", "decision", "execution").contains(profile)) {
+            sendError(exchange, 400, "invalid_state_profile",
+                "profile must be full, decision, or execution");
+            return;
+        }
+        String selectedProfile = profile;
         try {
-            sendJson(exchange, 200, onGameThread(() -> withControlledTeam(team, this::snapshot)));
+            sendJson(exchange, 200, onGameThread(() ->
+                withControlledTeam(team, () -> snapshot(selectedProfile))));
         } catch (Exception error) {
             Log.err(error);
             sendError(exchange, 503, "state_unavailable", error.getMessage());
@@ -1343,9 +1357,10 @@ public final class MindustryAgentPlugin extends Plugin {
         }
     }
 
-    private Map<String, Object> snapshot() {
+    private Map<String, Object> snapshot(String profile) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schema_version", 2);
+        root.put("state_profile", profile);
         root.put("episode_id", episodeId);
         if (!previousEpisodeResult.isEmpty()) root.put("previous_episode_result", previousEpisodeResult);
         root.put("observed_at", Instant.now().toString());
@@ -1406,6 +1421,8 @@ public final class MindustryAgentPlugin extends Plugin {
         if ("stockpile_rts_pvp".equals(gameModeVariant)) {
             root.put("victory_conditions", List.of("destroy_every_enemy_core"));
         }
+        boolean includeDecisionAnalysis = !"execution".equals(profile);
+        boolean includeStaticCatalog = "full".equals(profile);
         root.put("pvp_fairness", pvpFairness);
         root.put("rts_battlefield", pvpFairness.getOrDefault("strategic_battlefield", Map.of()));
 
@@ -1413,9 +1430,11 @@ public final class MindustryAgentPlugin extends Plugin {
         root.put("core", core == null ? null : coreState(core));
         root.put("cores", coreStates(team));
         root.put("buildings", buildingState(team));
-        root.put("power_networks", powerNetworkState(team));
-        root.put("power_node_topology", powerNodeTopology(team));
-        root.put("production_summary", productionSummary(team));
+        if (includeDecisionAnalysis) {
+            root.put("power_networks", powerNetworkState(team));
+            root.put("power_node_topology", powerNodeTopology(team));
+            root.put("production_summary", productionSummary(team));
+        }
         root.put("rts_construction_queue", rtsConstructionQueueState(team));
         root.put("rts_training_queues", rtsTrainingQueueState(team));
         root.put("rts_upgrade_queues", rtsUpgradeQueueState(team));
@@ -1429,19 +1448,21 @@ public final class MindustryAgentPlugin extends Plugin {
         root.put("friendly_units", unitState(team, false));
         root.put("enemy_units", unitState(team, true));
         root.put("enemy_teams", enemyTeamState(team));
-        root.put("enemy_spawns", spawnState());
-        root.put("wave_forecast", waveMode ? waveForecast() : Map.of(
-            "meaning", "No scripted waves are active in this PvP match; opposing teams are the only combat threat.",
-            "waves", List.of()
-        ));
         root.put("threat_summary", threatSummary(core));
-        root.put("defense_analysis", defenseAnalysis(core));
-        root.put("logistics_analysis", logisticsAnalysis(team));
-        root.put("nearby_ores", oreState(core));
         root.put("core_defender", coreDefenderState());
-        root.put("defense_supply", defenseSupplyState(core));
-        root.put("valid_placement_samples", placementHints(core));
-        root.put("available_blocks", availableBlocks());
+        if (includeDecisionAnalysis) {
+            root.put("enemy_spawns", spawnState());
+            root.put("wave_forecast", waveMode ? waveForecast() : Map.of(
+                "meaning", "No scripted waves are active in this PvP match; opposing teams are the only combat threat.",
+                "waves", List.of()
+            ));
+            root.put("defense_analysis", defenseAnalysis(core));
+            root.put("logistics_analysis", logisticsAnalysis(team));
+            root.put("nearby_ores", oreState(core));
+            root.put("defense_supply", defenseSupplyState(core));
+            root.put("valid_placement_samples", placementHints(core));
+        }
+        if (includeStaticCatalog) root.put("available_blocks", availableBlocks());
         root.put("action_contract", Map.of(
             "endpoint", "POST /v1/action",
             "max_actions", MAX_ACTIONS_PER_REQUEST,

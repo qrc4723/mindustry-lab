@@ -75,6 +75,13 @@ class RtsPluginContractTest(unittest.TestCase):
         self.assertIn("GAME_THREAD_REQUEST_TIMEOUT_SECONDS = 20", self.source)
         self.assertIn("future.get(GAME_THREAD_REQUEST_TIMEOUT_SECONDS", self.source)
 
+    def test_state_profiles_skip_heavy_repeated_analysis(self) -> None:
+        self.assertIn('Set.of("full", "decision", "execution")', self.source)
+        self.assertIn('boolean includeDecisionAnalysis = !"execution".equals(profile)', self.source)
+        self.assertIn('boolean includeStaticCatalog = "full".equals(profile)', self.source)
+        self.assertIn('if (includeDecisionAnalysis)', self.source)
+        self.assertIn('if (includeStaticCatalog)', self.source)
+
     def test_showcase_uses_tactical_terrain_v5(self) -> None:
         self.assertIn("symmetric_three_lane_tactical_showcase_v5", self.source)
         self.assertIn("three-region competitive arena", self.source)
