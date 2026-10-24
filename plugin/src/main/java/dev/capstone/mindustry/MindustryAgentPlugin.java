@@ -679,18 +679,46 @@ public final class MindustryAgentPlugin extends Plugin {
         int dividerRight = sumX - dividerLeft;
         int neutralWallTiles = 0;
 
-        // Floors communicate navigable fronts without making every lane one featureless rectangle.
-        for (int index = 0; index < laneCenters.length; index++) {
-            int laneCenter = laneCenters[index], halfHeight = laneHalfHeights[index];
-            paintFloorRect(0, laneCenter - halfHeight, Vars.world.width() - 1,
-                laneCenter + halfHeight, Blocks.metalFloor);
-            paintFloorRect(dividerLeft - 10, laneCenter - Math.min(5, halfHeight), dividerRight + 10,
-                laneCenter + Math.min(5, halfHeight), Blocks.darkPanel1);
-        }
-        paintFloorRect(sourceCore.tileX() - 12, sourceCore.tileY() - 15,
-            sourceCore.tileX() + 12, sourceCore.tileY() + 15, Blocks.metalFloor2);
-        paintFloorRect(targetCore.tileX() - 12, targetCore.tileY() - 15,
-            targetCore.tileX() + 12, targetCore.tileY() + 15, Blocks.metalFloor2);
+        // Give the arena readable RTS regions without changing movement speed, damage, resources,
+        // buildability, or route geometry. The deterministic texture is mirrored across the teams.
+        paintFloorRect(0, 0, Vars.world.width() - 1, Vars.world.height() - 1, Blocks.dacite);
+        paintFloorRect(0, laneCenters[0] - laneHalfHeights[0] - 2, Vars.world.width() - 1,
+            Vars.world.height() - 1, Blocks.grass);
+        paintFloorRect(0, laneCenters[1] - laneHalfHeights[1] - 5, Vars.world.width() - 1,
+            laneCenters[1] + laneHalfHeights[1] + 5, Blocks.metalFloorDamaged);
+        paintFloorRect(0, 0, Vars.world.width() - 1,
+            laneCenters[2] + laneHalfHeights[2] + 2, Blocks.basalt);
+
+        paintMirroredFloorTexture(0, laneCenters[2] + laneHalfHeights[2] + 2,
+            Blocks.charr, Blocks.craters, sumX, 17);
+        paintMirroredFloorTexture(laneCenters[0] - laneHalfHeights[0] - 2,
+            Vars.world.height() - 1, Blocks.moss, Blocks.dacite, sumX, 31);
+        paintMirroredFloorTexture(laneCenters[1] - laneHalfHeights[1] - 5,
+            laneCenters[1] + laneHalfHeights[1] + 5, Blocks.darkPanel6, Blocks.metalFloor3, sumX, 47);
+
+        // Distinct road surfaces let a spectator identify the three routes at a glance.
+        paintFloorRect(0, laneCenters[0] - 4, Vars.world.width() - 1,
+            laneCenters[0] + 4, Blocks.shale);
+        paintFloorRect(0, laneCenters[1] - 3, Vars.world.width() - 1,
+            laneCenters[1] + 3, Blocks.metalFloor5);
+        paintFloorRect(0, laneCenters[2] - 4, Vars.world.width() - 1,
+            laneCenters[2] + 4, Blocks.charr);
+
+        // Layered bases read as intentional command compounds instead of plain rectangles.
+        paintFloorEllipse(sourceCore.tileX(), sourceCore.tileY(), 15, 18, Blocks.metalFloorDamaged);
+        paintFloorEllipse(targetCore.tileX(), targetCore.tileY(), 15, 18, Blocks.metalFloorDamaged);
+        paintFloorEllipse(sourceCore.tileX(), sourceCore.tileY(), 11, 14, Blocks.metalFloor3);
+        paintFloorEllipse(targetCore.tileX(), targetCore.tileY(), 11, 14, Blocks.metalFloor3);
+        paintFloorEllipse(sourceCore.tileX(), sourceCore.tileY(), 7, 9, Blocks.metalFloor2);
+        paintFloorEllipse(targetCore.tileX(), targetCore.tileY(), 7, 9, Blocks.metalFloor2);
+
+        // Every neutral objective has a compact visual plaza. These are cosmetic floor changes only.
+        paintControlPointPlaza((dividerLeft + dividerRight) / 2, laneCenters[0],
+            Blocks.metalFloor4, Blocks.darkPanel2);
+        paintControlPointPlaza((dividerLeft + dividerRight) / 2, laneCenters[1],
+            Blocks.metalFloor5, Blocks.darkPanel3);
+        paintControlPointPlaza((dividerLeft + dividerRight) / 2, laneCenters[2],
+            Blocks.metalFloor3, Blocks.darkPanel4);
 
         // A broken central ridge creates three mechanically different ground crossings. Air units
         // ignore it and therefore retain separate direct approach choices.
@@ -706,7 +734,7 @@ public final class MindustryAgentPlugin extends Plugin {
                 if (laneOpening) continue;
                 Tile tile = Vars.world.tile(x, y);
                 if (tile == null || tile.build instanceof CoreBuild) continue;
-                tile.setBlock(Blocks.stoneWall);
+                tile.setBlock(Blocks.daciteWall);
                 neutralWallTiles++;
             }
         }
@@ -714,46 +742,46 @@ public final class MindustryAgentPlugin extends Plugin {
         int tacticalCoverTiles = 0;
         CoreBuild leftCore = sourceCore.tileX() <= targetCore.tileX() ? sourceCore : targetCore;
 
-        // Every base has an open, buildable defensive shelf in front of the core. Short stone wings
+        // Every base has an open, buildable defensive shelf in front of the core. Short rock wings
         // define the gate but deliberately leave a broad center opening and two rotation exits.
         int leftGateX = leftCore.tileX() + 15;
         tacticalCoverTiles += placeMirroredXTerrainRect(leftGateX, centerY + 7,
-            leftGateX + 3, centerY + 11, Blocks.stoneWall, sumX);
+            leftGateX + 3, centerY + 11, Blocks.daciteWall, sumX);
         tacticalCoverTiles += placeMirroredXTerrainRect(leftGateX, centerY - 11,
-            leftGateX + 3, centerY - 7, Blocks.stoneWall, sumX);
+            leftGateX + 3, centerY - 7, Blocks.daciteWall, sumX);
 
         // North: staggered islands split the wide field into two sub-routes. They support concaves,
         // flanking and ranged kiting while preserving enough width for heavy formations.
         tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 29, laneCenters[0] - 8,
-            dividerLeft - 25, laneCenters[0] - 4, Blocks.stoneWall, sumX);
+            dividerLeft - 25, laneCenters[0] - 4, Blocks.shaleWall, sumX);
         tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 19, laneCenters[0] + 3,
-            dividerLeft - 15, laneCenters[0] + 8, Blocks.stoneWall, sumX);
+            dividerLeft - 15, laneCenters[0] + 8, Blocks.shaleWall, sumX);
         tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 8, laneCenters[0] - 7,
-            dividerLeft - 5, laneCenters[0] - 3, Blocks.stoneWall, sumX);
+            dividerLeft - 5, laneCenters[0] - 3, Blocks.shaleWall, sumX);
 
         // Center: two offset firing screens create a short exposed bridge, then a separate fallback
         // gate on each home side. A defender can fortify either line without sealing the route.
         tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 13, laneCenters[1] + 5,
-            dividerLeft - 6, laneCenters[1] + 8, Blocks.stoneWall, sumX);
+            dividerLeft - 6, laneCenters[1] + 8, Blocks.daciteWall, sumX);
         tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 9, laneCenters[1] - 8,
-            dividerLeft - 5, laneCenters[1] - 5, Blocks.stoneWall, sumX);
+            dividerLeft - 5, laneCenters[1] - 5, Blocks.daciteWall, sumX);
         tacticalCoverTiles += placeMirroredXTerrainRect(dividerLeft - 27, laneCenters[1] + 6,
-            dividerLeft - 24, laneCenters[1] + 9, Blocks.stoneWall, sumX);
+            dividerLeft - 24, laneCenters[1] + 9, Blocks.daciteWall, sumX);
 
         // South: alternating barriers form a long S-route with two bends and side pockets. The route
         // is slower but emerges away from the direct center firing line, enabling rear pressure.
         tacticalCoverTiles += placeTerrainRect(dividerLeft - 31, laneCenters[2] - 2,
-            dividerLeft - 26, laneCenters[2] + 7, Blocks.stoneWall);
+            dividerLeft - 26, laneCenters[2] + 7, Blocks.duneWall);
         tacticalCoverTiles += placeTerrainRect(dividerLeft - 20, laneCenters[2] - 7,
-            dividerLeft - 15, laneCenters[2] + 2, Blocks.stoneWall);
+            dividerLeft - 15, laneCenters[2] + 2, Blocks.duneWall);
         tacticalCoverTiles += placeTerrainRect(dividerLeft - 9, laneCenters[2] - 1,
-            dividerLeft - 5, laneCenters[2] + 7, Blocks.stoneWall);
+            dividerLeft - 5, laneCenters[2] + 7, Blocks.duneWall);
         tacticalCoverTiles += placeTerrainRect(sumX - (dividerLeft - 26), laneCenters[2] - 7,
-            sumX - (dividerLeft - 31), laneCenters[2] + 2, Blocks.stoneWall);
+            sumX - (dividerLeft - 31), laneCenters[2] + 2, Blocks.duneWall);
         tacticalCoverTiles += placeTerrainRect(sumX - (dividerLeft - 15), laneCenters[2] - 2,
-            sumX - (dividerLeft - 20), laneCenters[2] + 7, Blocks.stoneWall);
+            sumX - (dividerLeft - 20), laneCenters[2] + 7, Blocks.duneWall);
         tacticalCoverTiles += placeTerrainRect(sumX - (dividerLeft - 5), laneCenters[2] - 7,
-            sumX - (dividerLeft - 9), laneCenters[2] + 1, Blocks.stoneWall);
+            sumX - (dividerLeft - 9), laneCenters[2] + 1, Blocks.duneWall);
 
         List<Map<String, Object>> lanes = new ArrayList<>();
         lanes.add(strategicLane(
@@ -773,7 +801,8 @@ public final class MindustryAgentPlugin extends Plugin {
         ));
 
         return Map.ofEntries(
-            Map.entry("style", "symmetric_three_lane_tactical_showcase_v4"),
+            Map.entry("style", "symmetric_three_lane_tactical_showcase_v5"),
+            Map.entry("visual_theme", "three-region competitive arena with an overgrown north, industrial center, volcanic south, layered command compounds, and objective plazas"),
             Map.entry("ground_route_choices", 3),
             Map.entry("neutral_divider_x_min", dividerLeft),
             Map.entry("neutral_divider_x_max", dividerRight),
@@ -790,7 +819,8 @@ public final class MindustryAgentPlugin extends Plugin {
                 "open buildable defensive shelves between each core and its lane entrances",
                 "solid terrain that blocks ground passage and direct firing lines",
                 "air-only shortcuts across the neutral ridge",
-                "open home-side rotation space between lanes"
+                "open home-side rotation space between lanes",
+                "cosmetic region textures that preserve identical movement, building, and resource rules"
             )),
             Map.entry("strategy_contract", "lane facts are observations, not a preferred opening, force split, or attack order")
         );
@@ -801,6 +831,42 @@ public final class MindustryAgentPlugin extends Plugin {
             for (int y = Math.max(0, minY); y <= Math.min(Vars.world.height() - 1, maxY); y++) {
                 Tile tile = Vars.world.tile(x, y);
                 if (tile != null) tile.setFloor(floor.asFloor());
+            }
+        }
+    }
+
+    private void paintFloorEllipse(int centerX, int centerY, int radiusX, int radiusY, Block floor) {
+        for (int x = centerX - radiusX; x <= centerX + radiusX; x++) {
+            for (int y = centerY - radiusY; y <= centerY + radiusY; y++) {
+                double normalizedX = (x - centerX) / (double)radiusX;
+                double normalizedY = (y - centerY) / (double)radiusY;
+                if (normalizedX * normalizedX + normalizedY * normalizedY > 1d) continue;
+                Tile tile = Vars.world.tile(x, y);
+                if (tile != null) tile.setFloor(floor.asFloor());
+            }
+        }
+    }
+
+    private void paintControlPointPlaza(int centerX, int centerY, Block outer, Block inner) {
+        paintFloorEllipse(centerX, centerY, 9, 6, outer);
+        paintFloorEllipse(centerX, centerY, 6, 4, inner);
+        paintFloorRect(centerX - 1, centerY - 5, centerX + 1, centerY + 5, outer);
+        paintFloorRect(centerX - 7, centerY - 1, centerX + 7, centerY + 1, outer);
+    }
+
+    private void paintMirroredFloorTexture(
+        int minY, int maxY, Block frequentAccent, Block rareAccent, int sumX, int seed
+    ) {
+        int leftLimit = Math.min(Vars.world.width() - 1, sumX / 2);
+        for (int x = 0; x <= leftLimit; x++) {
+            for (int y = Math.max(0, minY); y <= Math.min(Vars.world.height() - 1, maxY); y++) {
+                int noise = Math.floorMod(x * 73 + y * 151 + x * y * 17 + seed * 97, 101);
+                Block floor = noise < 13 ? frequentAccent : noise < 17 ? rareAccent : null;
+                if (floor == null) continue;
+                Tile left = Vars.world.tile(x, y);
+                Tile right = Vars.world.tile(sumX - x, y);
+                if (left != null) left.setFloor(floor.asFloor());
+                if (right != null) right.setFloor(floor.asFloor());
             }
         }
     }

@@ -75,8 +75,13 @@ class RtsPluginContractTest(unittest.TestCase):
         self.assertIn("GAME_THREAD_REQUEST_TIMEOUT_SECONDS = 20", self.source)
         self.assertIn("future.get(GAME_THREAD_REQUEST_TIMEOUT_SECONDS", self.source)
 
-    def test_showcase_uses_tactical_terrain_v4(self) -> None:
-        self.assertIn("symmetric_three_lane_tactical_showcase_v4", self.source)
+    def test_showcase_uses_tactical_terrain_v5(self) -> None:
+        self.assertIn("symmetric_three_lane_tactical_showcase_v5", self.source)
+        self.assertIn("three-region competitive arena", self.source)
+        self.assertIn("paintControlPointPlaza", self.source)
+        self.assertIn("paintMirroredFloorTexture", self.source)
+        self.assertIn("Blocks.grass", self.source)
+        self.assertIn("Blocks.basalt", self.source)
         self.assertIn("placeMirroredXTerrainRect", self.source)
         self.assertIn("long southern two-bend rear approach", self.source)
         self.assertIn("air-only shortcuts across the neutral ridge", self.source)
