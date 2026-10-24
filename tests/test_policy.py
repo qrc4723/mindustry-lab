@@ -618,6 +618,15 @@ class PolicyTest(unittest.TestCase):
         construction_capacity = compact["rts_operational_summary"]["construction_capacity"]
         self.assertEqual(construction_capacity["parallel_slots"], 2)
         self.assertEqual(construction_capacity["pending_orders"], 1)
+        availability = compact["rts_action_availability"]
+        self.assertEqual(
+            availability["busy_factory_slots_do_not_accept_orders"][0]["facility_id"],
+            "factory:20:30",
+        )
+        self.assertEqual(
+            availability["busy_reconstructor_slots_do_not_accept_orders"][0]["facility_id"],
+            "reconstructor:50:30",
+        )
         self.assertNotIn("production_networks", compact)
         self.assertNotIn("logistics_analysis", compact)
         self.assertNotIn("power_networks", compact)
@@ -709,6 +718,36 @@ class PolicyTest(unittest.TestCase):
         construction = compact["rts_operational_summary"]["construction_capacity"]
         self.assertEqual(construction["occupied_slots"], 1)
         self.assertEqual(construction["next_completions"][0]["construction_slot"], 2)
+
+    def test_rts_action_availability_exposes_exact_duplicate_gates(self) -> None:
+        state = {
+            "rules": {"pvp": True},
+            "game_mode_variant": {"id": "stockpile_rts_pvp"},
+            "core": {"items": {}},
+            "friendly_units": [
+                {"id": 10, "type": "dagger", "commandable": True},
+                {"id": 11, "type": "dagger", "commandable": True},
+                {"id": 99, "type": "gamma", "commandable": True},
+            ],
+            "core_defender": {"active": True, "id": 99},
+            "rts_squads": [{
+                "squad_id": "alpha", "mode": "attack_move", "member_ids": [10],
+                "member_count": 1, "pending_training_units": 2,
+                "target": {"x": 84, "y": 40}, "engagement_radius": 14,
+                "execution_status": "moving",
+            }],
+        }
+
+        compact = compact_state(state)
+        availability = compact["rts_action_availability"]
+
+        signature = availability["active_persistent_order_signatures_do_not_repeat"][0]
+        self.assertEqual(signature["squad_id"], "alpha")
+        self.assertEqual(signature["target_x"], 84)
+        self.assertEqual(signature["pending_training_units"], 2)
+        self.assertEqual(
+            availability["unassigned_commandable_unit_ids_by_type"], {"dagger": [11]}
+        )
 
     def test_stockpile_rts_exposes_unranked_turret_wall_and_ammo_facts(self) -> None:
         state = {

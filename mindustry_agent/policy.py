@@ -1090,6 +1090,128 @@ def _stockpile_rts_operational_summary(
     }
 
 
+def _stockpile_rts_action_availability(
+    state: dict[str, Any], production: dict[str, Any],
+) -> dict[str, Any]:
+    """Join exact current RTS action gates so the model need not infer them across tables."""
+    ready_factories: list[dict[str, Any]] = []
+    busy_factories: list[dict[str, Any]] = []
+    for factory in production.get("factories", []) if isinstance(production, dict) else []:
+        if not isinstance(factory, dict):
+            continue
+        supported_units = [
+            plan.get("unit") for plan in factory.get("plans", [])
+            if isinstance(plan, dict) and plan.get("unit")
+        ]
+        for instance in factory.get("existing_instances", []):
+            if not isinstance(instance, dict):
+                continue
+            row = {
+                "facility_id": instance.get("facility_id"),
+                "supported_units": supported_units,
+            }
+            if instance.get("available_for_new_order"):
+                ready_factories.append(row)
+            else:
+                queue = instance.get("active_queue") if isinstance(instance.get("active_queue"), dict) else {}
+                busy_factories.append({
+                    **row,
+                    "active_unit": queue.get("unit"),
+                    "remaining": queue.get("remaining"),
+                    "seconds_until_next_unit": queue.get("seconds_until_next_unit"),
+                })
+
+    ready_reconstructors: list[dict[str, Any]] = []
+    busy_reconstructors: list[dict[str, Any]] = []
+    for reconstructor in production.get("reconstructors", []) if isinstance(production, dict) else []:
+        if not isinstance(reconstructor, dict):
+            continue
+        startable_pairs = [
+            {
+                "from_unit": upgrade.get("from_unit"),
+                "to_unit": upgrade.get("to_unit"),
+                "maximum_startable_now": upgrade.get(
+                    "maximum_startable_now_from_resources_and_units", 0
+                ),
+            }
+            for upgrade in reconstructor.get("upgrades", [])
+            if isinstance(upgrade, dict)
+            and int(upgrade.get("maximum_startable_now_from_resources_and_units", 0) or 0) > 0
+        ]
+        for instance in reconstructor.get("existing_instances", []):
+            if not isinstance(instance, dict):
+                continue
+            row = {
+                "facility_id": instance.get("facility_id"),
+                "startable_pairs_now": startable_pairs,
+            }
+            if instance.get("available_for_new_order"):
+                ready_reconstructors.append(row)
+            else:
+                queue = instance.get("active_queue") if isinstance(instance.get("active_queue"), dict) else {}
+                busy_reconstructors.append({
+                    **row,
+                    "active_pair": {
+                        "from_unit": queue.get("from_unit"),
+                        "to_unit": queue.get("to_unit"),
+                    },
+                    "remaining": queue.get("remaining"),
+                    "seconds_until_next_unit": queue.get("seconds_until_next_unit"),
+                })
+
+    blocked_orders: list[dict[str, Any]] = []
+    assigned_ids: set[int] = set()
+    for squad in state.get("rts_squads", []):
+        if not isinstance(squad, dict):
+            continue
+        assigned_ids.update(
+            int(unit_id) for unit_id in squad.get("member_ids", [])
+            if isinstance(unit_id, (int, float))
+        )
+        if (
+            int(squad.get("member_count", 0) or 0) <= 0
+            and int(squad.get("pending_training_units", 0) or 0) <= 0
+        ):
+            continue
+        target = squad.get("target") if isinstance(squad.get("target"), dict) else {}
+        blocked_orders.append({
+            "squad_id": squad.get("squad_id"),
+            "mode": squad.get("mode"),
+            "target_x": target.get("x"),
+            "target_y": target.get("y"),
+            "target_unit_id": squad.get("target_unit_id"),
+            "engagement_radius": int(squad.get("engagement_radius", 14) or 14),
+            "member_count": int(squad.get("member_count", 0) or 0),
+            "pending_training_units": int(squad.get("pending_training_units", 0) or 0),
+            "execution_status": squad.get("execution_status"),
+        })
+
+    defender = state.get("core_defender") if isinstance(state.get("core_defender"), dict) else {}
+    defender_id = defender.get("id") if defender.get("active") else None
+    unassigned_by_type: dict[str, list[int]] = {}
+    for unit in state.get("friendly_units", []):
+        if not isinstance(unit, dict) or not unit.get("commandable"):
+            continue
+        unit_id = unit.get("id")
+        if not isinstance(unit_id, int) or unit_id == defender_id or unit_id in assigned_ids:
+            continue
+        unassigned_by_type.setdefault(str(unit.get("type", "unknown")), []).append(unit_id)
+
+    return {
+        "meaning": (
+            "Exact feasibility snapshot, not strategy. Use only ready facility IDs for new queue orders. "
+            "An identical command_units order listed under active_persistent_order_signatures is already "
+            "executing and will be dropped unless explicit new unit_ids change its membership."
+        ),
+        "ready_factory_slots": ready_factories,
+        "busy_factory_slots_do_not_accept_orders": busy_factories,
+        "ready_reconstructor_slots": ready_reconstructors,
+        "busy_reconstructor_slots_do_not_accept_orders": busy_reconstructors,
+        "active_persistent_order_signatures_do_not_repeat": blocked_orders,
+        "unassigned_commandable_unit_ids_by_type": unassigned_by_type,
+    }
+
+
 def _is_stockpile_rts_production_block(block: dict[str, Any]) -> bool:
     return bool(block.get("unit_plans")) or bool(block.get("unit_upgrades"))
 
@@ -1902,6 +2024,9 @@ def compact_state(state: dict[str, Any]) -> dict[str, Any]:
         compact["rts_defense"] = _stockpile_rts_defense_state(state, block_definitions)
         compact["rts_operational_summary"] = _stockpile_rts_operational_summary(
             state, compact["offensive_production"], compact["pvp_objective"]
+        )
+        compact["rts_action_availability"] = _stockpile_rts_action_availability(
+            state, compact["offensive_production"]
         )
     else:
         compact["currently_obtainable_resources"] = sorted(renewable_resources)

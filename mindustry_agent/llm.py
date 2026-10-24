@@ -179,6 +179,11 @@ Stockpile RTS strategic frame (causal guidance, never a build order):
   do not invent a redundant command merely to avoid waiting. Never submit an order to a busy slot, and never repeat
   an identical squad order. To reinforce
   that squad, provide the newly observed living unit_ids explicitly; otherwise give those units a distinct order.
+- rts_action_availability is the final current-turn feasibility checklist. Before returning JSON, compare every
+  train_units, upgrade_units, and command_units action against it. Busy facility IDs accept no new order. An exact
+  signature in active_persistent_order_signatures_do_not_repeat is already executing continuously; omit it unless
+  explicit new unit_ids change membership. Prefer an empty actions array over resubmitting a blocked or identical
+  command. This checklist removes redundant execution only and does not choose strategy for you.
 - action_failure_memory also includes model-authored actions rejected by feasibility preflight. If it reports
   standing_squad_order_already_active, that exact squad mode, target, engagement radius, and membership is already
   executing continuously. Do not submit the same signature again until observed evidence justifies a changed order;

@@ -138,6 +138,8 @@ class LlmTest(unittest.TestCase):
         self.assertIn("available_for_new_order", prompt)
         self.assertIn("maximum_startable_now_from_resources_and_units", prompt)
         self.assertIn("rts_construction_queue", prompt)
+        self.assertIn("rts_action_availability", prompt)
+        self.assertIn("active_persistent_order_signatures_do_not_repeat", prompt)
         self.assertIn("two parallel construction", prompt)
         self.assertIn("completed_then_destroyed", prompt)
         self.assertIn("existing_instances", prompt)
